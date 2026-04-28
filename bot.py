@@ -6,50 +6,49 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-OWNER_ID = int(os.getenv('OWNER_ID', 0))
+TOKEN = os.getenv('BOT_TOKEN')
+OWNER = int(os.getenv('OWNER_ID', 0))
 
-# Get 6 groups from environment variables
-GROUPS = []
-for i in range(1, 7):
-    group_data = os.getenv(f'GROUP_{i}', '')
-    if group_data:
-        name, link = group_data.split(',', 1)
-        GROUPS.append({'name': name, 'link': link})
+# YOUR 7 GROUPS FROM IMAGE (change names and links as needed)
+GROUPS = [
+    {"name": "Free Earning Loots 🎁🎁", "link": os.getenv('GROUP_1')},
+    {"name": "Dhani Extra Loot", "link": os.getenv('GROUP_2')},
+    {"name": "Earn Loot Tips 🏆🏆", "link": os.getenv('GROUP_3')},
+    {"name": "Super Loots", "link": os.getenv('GROUP_4')},
+    {"name": "Mani looters (official)", "link": os.getenv('GROUP_5')},
+    {"name": "Diwa 777 Game Codes !!", "link": os.getenv('GROUP_6')},
+    {"name": "Tricks By Manas [Official]", "link": os.getenv('GROUP_7')},
+]
 
-USER_DATA_FILE = 'user_data.json'
+DATA_FILE = 'users.json'
 
-def load_users():
+def get_users():
     try:
-        with open(USER_DATA_FILE, 'r') as f:
+        with open(DATA_FILE, 'r') as f:
             return json.load(f)
     except:
         return {}
 
 def save_users(users):
-    with open(USER_DATA_FILE, 'w') as f:
+    with open(DATA_FILE, 'w') as f:
         json.dump(users, f)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    users = load_users()
+    users = get_users()
     
     if user_id not in users:
         users[user_id] = {'joined': []}
         save_users(users)
     
-    joined_count = len(users[user_id]['joined'])
-    
-    # Create join buttons
     keyboard = []
     for i, group in enumerate(GROUPS):
         if i in users[user_id]['joined']:
-            keyboard.append([InlineKeyboardButton(f"✅ {group['name']} (Joined)", callback_data=f"dummy")])
+            keyboard.append([InlineKeyboardButton(f"✅ {group['name']}", callback_data="no")])
         else:
             keyboard.append([InlineKeyboardButton(f"🔗 {group['name']}", callback_data=f"join_{i}")])
     
-    # Claim button - shows only if all groups joined
-    if joined_count >= len(GROUPS):
+    if len(users[user_id]['joined']) >= len(GROUPS):
         keyboard.append([InlineKeyboardButton("✅ CLAIM", callback_data="claim")])
     
     await update.message.reply_text(
@@ -60,50 +59,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = str(query.from_user.id)
     data = query.data
-    
-    users = load_users()
+    users = get_users()
     
     if data.startswith("join_"):
-        group_index = int(data.split("_")[1])
-        group = GROUPS[group_index]
-        
-        # Send join link button
-        join_keyboard = InlineKeyboardMarkup([[
+        idx = int(data.split("_")[1])
+        group = GROUPS[idx]
+        kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("🔗 JOIN NOW", url=group['link']),
-            InlineKeyboardButton("✅ I HAVE JOINED", callback_data=f"joined_{group_index}")
+            InlineKeyboardButton("✅ I HAVE JOINED", callback_data=f"done_{idx}")
         ]])
-        
         await query.edit_message_text(
-            f"📢 *Join This Channel*\n\n"
-            f"Channel: *{group['name']}*\n\n"
-            f"After joining, click the 'I HAVE JOINED' button.",
-            reply_markup=join_keyboard,
+            f"📢 *Join This Channel*\n\nChannel: *{group['name']}*\n\nAfter joining, click 'I HAVE JOINED'.",
+            reply_markup=kb,
             parse_mode="Markdown"
         )
     
-    elif data.startswith("joined_"):
-        group_index = int(data.split("_")[1])
-        
-        if group_index not in users[user_id]['joined']:
-            users[user_id]['joined'].append(group_index)
+    elif data.startswith("done_"):
+        idx = int(data.split("_")[1])
+        if idx not in users[user_id]['joined']:
+            users[user_id]['joined'].append(idx)
             save_users(users)
         
-        # Show updated main menu
-        joined_count = len(users[user_id]['joined'])
-        
         keyboard = []
-        for i, group in enumerate(GROUPS):
+        for i, g in enumerate(GROUPS):
             if i in users[user_id]['joined']:
-                keyboard.append([InlineKeyboardButton(f"✅ {group['name']} (Joined)", callback_data=f"dummy")])
+                keyboard.append([InlineKeyboardButton(f"✅ {g['name']}", callback_data="no")])
             else:
-                keyboard.append([InlineKeyboardButton(f"🔗 {group['name']}", callback_data=f"join_{i}")])
+                keyboard.append([InlineKeyboardButton(f"🔗 {g['name']}", callback_data=f"join_{i}")])
         
-        if joined_count >= len(GROUPS):
+        if len(users[user_id]['joined']) >= len(GROUPS):
             keyboard.append([InlineKeyboardButton("✅ CLAIM", callback_data="claim")])
         
         await query.edit_message_text(
@@ -115,55 +104,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     elif data == "claim":
-        joined_count = len(users[user_id]['joined'])
-        
-        if joined_count >= len(GROUPS):
+        if len(users[user_id]['joined']) >= len(GROUPS):
             await query.edit_message_text(
-                f"✅ *CLAIM SUCCESSFUL!*\n\n"
-                f"Thank you for joining all {len(GROUPS)} channels!\n\n"
-                f"💰 Your reward will be processed soon.\n\n"
-                f"Keep visiting for more rewards!",
+                f"✅ *CLAIM SUCCESSFUL!*\n\nThank you for joining all {len(GROUPS)} channels!\n\n💰 Your reward will be processed soon.",
                 parse_mode="Markdown"
             )
-            # Notify owner
-            await context.bot.send_message(
-                OWNER_ID,
-                f"💰 *New Claim!*\n\n"
-                f"User: {query.from_user.first_name}\n"
-                f"ID: `{user_id}`\n"
-                f"Username: @{query.from_user.username or 'N/A'}",
-                parse_mode="Markdown"
-            )
+            await context.bot.send_message(OWNER, f"💰 New Claim!\nUser: {query.from_user.first_name}\nID: {user_id}")
         else:
             await query.answer("Join all groups first!", show_alert=True)
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("Unauthorized!")
+    if update.effective_user.id != OWNER:
         return
-    
-    users = load_users()
-    total_users = len(users)
-    total_verified = sum(1 for u in users.values() if len(u['joined']) >= len(GROUPS))
-    
-    await update.message.reply_text(
-        f"📊 *Bot Stats*\n\n"
-        f"👥 Total Users: {total_users}\n"
-        f"✅ Verified Users: {total_verified}\n"
-        f"📢 Groups: {len(GROUPS)}",
-        parse_mode="Markdown"
-    )
+    users = get_users()
+    await update.message.reply_text(f"📊 Total Users: {len(users)}\n✅ Verified: {sum(1 for u in users.values() if len(u['joined']) >= len(GROUPS))}")
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    
+    app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    
-    print(f"✅ Bot started! Owner: {OWNER_ID}")
-    print(f"📢 {len(GROUPS)} groups configured")
-    
+    app.add_handler(CallbackQueryHandler(button))
+    print("Bot started!")
     app.run_polling()
 
 if __name__ == "__main__":
