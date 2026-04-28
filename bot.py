@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configuration from Railway Environment Variables
+# Configuration from Environment Variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', 0))
 MIN_WITHDRAWAL = int(os.getenv('MIN_WITHDRAWAL', 100))
@@ -16,18 +16,16 @@ DAILY_BONUS = int(os.getenv('DAILY_BONUS', 5))
 REFERRAL_BONUS = int(os.getenv('REFERRAL_BONUS', 3))
 
 # Get group/channel links from environment variables
-# Format: GROUP_1=name,https://t.me/joinchat/xxx
 GROUP_LINKS = []
 for i in range(1, 7):
     group_data = os.getenv(f'GROUP_{i}', '')
     if group_data:
-        name, link = group_data.split(',', 1)
-        GROUP_LINKS.append({'name': name, 'link': link, 'joined': False})
+        parts = group_data.split(',', 1)
+        if len(parts) == 2:
+            GROUP_LINKS.append({'name': parts[0], 'link': parts[1], 'joined': False})
 
 # User data storage
 user_data = {}
-
-# File to persist user data
 DATA_FILE = 'user_data.json'
 
 def load_user_data():
@@ -42,7 +40,6 @@ def save_user_data():
     with open(DATA_FILE, 'w') as f:
         json.dump(user_data, f, indent=2)
 
-# Helper functions
 def get_user(user_id):
     user_id = str(user_id)
     if user_id not in user_data:
@@ -57,16 +54,6 @@ def get_user(user_id):
         save_user_data()
     return user_data[user_id]
 
-async def check_all_joined(user_id, update_obj=None):
-    user = get_user(user_id)
-    all_joined = True
-    for i, group in enumerate(GROUP_LINKS):
-        if i not in user['verified_groups']:
-            all_joined = False
-            break
-    return all_joined
-
-# Command Handlers
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
@@ -81,7 +68,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['referred_by'] = str(referrer_id)
             save_user_data()
             await context.bot.send_message(
-                referrer_id,
+                int(referrer_id),
                 f"🎉 New referral! +{REFERRAL_BONUS}₹ added to your balance!"
             )
     
@@ -138,8 +125,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user['verified_groups'].append(group_index)
             save_user_data()
             
-            # Check if all groups are joined
-            all_joined = await check_all_joined(user_id)
+            all_joined = len(user['verified_groups']) == len(GROUP_LINKS)
             
             if all_joined and not user['verified']:
                 user['verified'] = True
@@ -151,11 +137,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
             else:
-                # Refresh the main menu
                 await start_command(update, context)
     
     elif data == "verify":
-        all_joined = await check_all_joined(user_id)
+        all_joined = len(user['verified_groups']) == len(GROUP_LINKS)
         if all_joined:
             user['verified'] = True
             save_user_data()
@@ -165,9 +150,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         else:
+            remaining = len(GROUP_LINKS) - len(user['verified_groups'])
             await query.edit_message_text(
                 f"❌ *Verification Failed*\n\n"
-                f"You haven't joined all required groups yet.\n"
+                f"You need to join {remaining} more group(s).\n"
                 f"Please join each group and click 'I've Joined'.",
                 parse_mode="Markdown"
             )
@@ -200,15 +186,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = (await context.bot.get_me()).username
         referral_link = f"https://t.me/{bot_username}?start={user_id}"
         
-        # Create keyboard with group links for referral
         referral_keyboard = []
-        for i, group in enumerate(GROUP_LINKS):
+        for group in GROUP_LINKS:
             referral_keyboard.append([InlineKeyboardButton(
                 f"📢 {group['name']}", 
                 url=group['link']
             )])
         
-        referral_keyboard.append([InlineKeyboardButton("🔗 Copy Referral Link", callback_data="copy_link")])
         referral_keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back_main")])
         
         await query.edit_message_text(
@@ -220,17 +204,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Earned from referrals: {user['referrals'] * REFERRAL_BONUS}₹\n\n"
             f"Share the groups below to get more referrals!",
             reply_markup=InlineKeyboardMarkup(referral_keyboard),
-            parse_mode="Markdown"
-        )
-    
-    elif data == "copy_link":
-        bot_username = (await context.bot.get_me()).username
-        referral_link = f"https://t.me/{bot_username}?start={user_id}"
-        await query.edit_message_text(
-            f"🔗 *Your Referral Link*\n\n"
-            f"`{referral_link}`\n\n"
-            f"Send this link to your friends!\n"
-            f"You get {REFERRAL_BONUS}₹ per referral.",
             parse_mode="Markdown"
         )
     
@@ -246,31 +219,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         else:
-            # Store withdrawal request for admin
-            withdraw_req = {
-                'user_id': user_id,
-                'username': query.from_user.username,
-                'amount': user['balance'],
-                'status': 'pending'
-            }
-            # Notify owner
             await context.bot.send_message(
                 OWNER_ID,
                 f"💰 *Withdrawal Request*\n\n"
-                f"User: @{query.from_user.username}\n"
+                f"User: @{query.from_user.username or query.from_user.first_name}\n"
                 f"ID: `{user_id}`\n"
                 f"Amount: {user['balance']}₹\n\n"
-                f"Send /approve_{user_id} to approve",
+                f"Use /approve_{user_id} to approve",
                 parse_mode="Markdown"
             )
             await query.edit_message_text(
                 f"✅ *Withdrawal Request Sent!*\n\n"
                 f"Amount: {user['balance']}₹\n"
-                f"Admin will process your request soon.\n\n"
-                f"Your balance has been locked until approval.",
+                f"Admin will process your request soon.",
                 parse_mode="Markdown"
             )
-            # Temporarily lock balance (set to negative or track separately)
             user['balance_pending'] = user['balance']
             user['balance'] = 0
             save_user_data()
@@ -294,7 +257,7 @@ async def approve_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = user['balance_pending']
         await update.message.reply_text(
             f"✅ Approved withdrawal of {amount}₹ for user {user_id}\n\n"
-            f"Send payment to @{user.get('username', 'user')} manually."
+            f"Send payment to user manually."
         )
         user['balance_pending'] = 0
         del user['balance_pending']
@@ -329,22 +292,22 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Verified Users: {total_verified}\n"
         f"💰 Total Balance: {total_balance}₹\n"
         f"👤 Total Referrals: {total_referrals}\n\n"
-        f"*Group Links Configured:* {len(GROUP_LINKS)}",
+        f"📢 Groups Configured: {len(GROUP_LINKS)}",
         parse_mode="Markdown"
     )
 
-# Main function
 def main():
     load_user_data()
     
+    if not BOT_TOKEN:
+        print("ERROR: BOT_TOKEN not set!")
+        return
+    
     app = Application.builder().token(BOT_TOKEN).build()
     
-    # Commands
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("approve", approve_command))
     app.add_handler(CommandHandler("stats", stats_command))
-    
-    # Callback handler
     app.add_handler(CallbackQueryHandler(button_handler))
     
     print(f"✅ Bot started! Owner ID: {OWNER_ID}")
