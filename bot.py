@@ -2,22 +2,27 @@ import os
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from dotenv import load_dotenv
 
-load_dotenv()
+# Get from Secrets (Environment Variables)
+TOKEN = os.environ.get('BOT_TOKEN')
+OWNER_ID = int(os.environ.get('OWNER_ID', 0))
 
-TOKEN = os.getenv('BOT_TOKEN')
-OWNER = int(os.getenv('OWNER_ID', 0))
+# Get 7 groups from Secrets
+GROUPS = []
+for i in range(1, 8):
+    link = os.environ.get(f'GROUP_{i}')
+    if link:
+        GROUPS.append(link)
 
-# YOUR 7 GROUPS FROM IMAGE (change names and links as needed)
-GROUPS = [
-    {"name": "Free Earning Loots 🎁🎁", "link": os.getenv('GROUP_1')},
-    {"name": "Dhani Extra Loot", "link": os.getenv('GROUP_2')},
-    {"name": "Earn Loot Tips 🏆🏆", "link": os.getenv('GROUP_3')},
-    {"name": "Super Loots", "link": os.getenv('GROUP_4')},
-    {"name": "Mani looters (official)", "link": os.getenv('GROUP_5')},
-    {"name": "Diwa 777 Game Codes !!", "link": os.getenv('GROUP_6')},
-    {"name": "Tricks By Manas [Official]", "link": os.getenv('GROUP_7')},
+# Group names (can't put emojis in Secrets, so names here)
+GROUP_NAMES = [
+    "Free Earning Loots 🎁🎁",
+    "Dhani Extra Loot",
+    "Earn Loot Tips 🏆🏆",
+    "Super Loots",
+    "Mani looters (official)",
+    "Diwa 777 Game Codes !!",
+    "Tricks By Manas [Official]"
 ]
 
 DATA_FILE = 'users.json'
@@ -42,11 +47,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_users(users)
     
     keyboard = []
-    for i, group in enumerate(GROUPS):
+    for i in range(len(GROUPS)):
         if i in users[user_id]['joined']:
-            keyboard.append([InlineKeyboardButton(f"✅ {group['name']}", callback_data="no")])
+            keyboard.append([InlineKeyboardButton(f"✅ {GROUP_NAMES[i]}", callback_data="no")])
         else:
-            keyboard.append([InlineKeyboardButton(f"🔗 {group['name']}", callback_data=f"join_{i}")])
+            keyboard.append([InlineKeyboardButton(f"🔗 {GROUP_NAMES[i]}", callback_data=f"join_{i}")])
     
     if len(users[user_id]['joined']) >= len(GROUPS):
         keyboard.append([InlineKeyboardButton("✅ CLAIM", callback_data="claim")])
@@ -68,13 +73,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data.startswith("join_"):
         idx = int(data.split("_")[1])
-        group = GROUPS[idx]
         kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔗 JOIN NOW", url=group['link']),
+            InlineKeyboardButton("🔗 JOIN NOW", url=GROUPS[idx]),
             InlineKeyboardButton("✅ I HAVE JOINED", callback_data=f"done_{idx}")
         ]])
         await query.edit_message_text(
-            f"📢 *Join This Channel*\n\nChannel: *{group['name']}*\n\nAfter joining, click 'I HAVE JOINED'.",
+            f"📢 *Join This Channel*\n\nChannel: *{GROUP_NAMES[idx]}*\n\nAfter joining, click 'I HAVE JOINED'.",
             reply_markup=kb,
             parse_mode="Markdown"
         )
@@ -86,11 +90,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_users(users)
         
         keyboard = []
-        for i, g in enumerate(GROUPS):
+        for i in range(len(GROUPS)):
             if i in users[user_id]['joined']:
-                keyboard.append([InlineKeyboardButton(f"✅ {g['name']}", callback_data="no")])
+                keyboard.append([InlineKeyboardButton(f"✅ {GROUP_NAMES[i]}", callback_data="no")])
             else:
-                keyboard.append([InlineKeyboardButton(f"🔗 {g['name']}", callback_data=f"join_{i}")])
+                keyboard.append([InlineKeyboardButton(f"🔗 {GROUP_NAMES[i]}", callback_data=f"join_{i}")])
         
         if len(users[user_id]['joined']) >= len(GROUPS):
             keyboard.append([InlineKeyboardButton("✅ CLAIM", callback_data="claim")])
@@ -109,22 +113,28 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ *CLAIM SUCCESSFUL!*\n\nThank you for joining all {len(GROUPS)} channels!\n\n💰 Your reward will be processed soon.",
                 parse_mode="Markdown"
             )
-            await context.bot.send_message(OWNER, f"💰 New Claim!\nUser: {query.from_user.first_name}\nID: {user_id}")
+            await context.bot.send_message(OWNER_ID, f"💰 New Claim!\nUser: {query.from_user.first_name}\nID: {user_id}")
         else:
             await query.answer("Join all groups first!", show_alert=True)
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER:
+    if update.effective_user.id != OWNER_ID:
         return
     users = get_users()
-    await update.message.reply_text(f"📊 Total Users: {len(users)}\n✅ Verified: {sum(1 for u in users.values() if len(u['joined']) >= len(GROUPS))}")
+    verified = sum(1 for u in users.values() if len(u['joined']) >= len(GROUPS))
+    await update.message.reply_text(f"📊 Users: {len(users)}\n✅ Verified: {verified}")
 
 def main():
+    if not TOKEN:
+        print("ERROR: BOT_TOKEN not set in Secrets!")
+        return
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CallbackQueryHandler(button))
-    print("Bot started!")
+    
+    print(f"✅ Bot started! {len(GROUPS)} groups loaded")
     app.run_polling()
 
 if __name__ == "__main__":
